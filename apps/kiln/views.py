@@ -1,5 +1,4 @@
 from django.contrib import messages
-from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.db.models import Prefetch
@@ -223,10 +222,8 @@ def resin_lot_feed(request):
 def delete_resin_lot(request, pk):
     lot = get_object_or_404(ResinLot, pk=pk)
     if not can_delete_resin_lot(request.user):
-        request.session.flush()
-        logout(request)
         messages.error(request, "无权删除来脂批")
-        return redirect("login")
+        return redirect("resin_lot_feed")
     lot.delete()
     messages.success(request, "来脂批已删除")
     return redirect("resin_lot_feed")
@@ -236,14 +233,9 @@ def delete_resin_lot(request, pk):
 @require_POST
 def delete_hearth(request, pk):
     hearth = get_object_or_404(FireHearth, pk=pk)
-    if request.user.is_staff:
-        request.session.flush()
-        messages.error(request, "主管不可删除灶台")
-        return redirect("login")
     if not can_delete_hearth(request.user):
-        request.session.flush()
-        logout(request)
-        return redirect("login")
+        messages.error(request, "无权删除灶台")
+        return redirect(f"/?hearth={pk}")
     hearth.delete()
     messages.success(request, "灶台已删除")
     return redirect("home")
@@ -254,14 +246,9 @@ def delete_hearth(request, pk):
 def delete_cook_run(request, pk):
     run = get_object_or_404(CookRun, pk=pk)
     hearth_pk = run.hearth_id
-    allowed = can_delete_cook_run(request.user)
-    if request.user.is_superuser:
-        allowed = False
-    if not allowed:
-        for key in list(request.session.keys()):
-            del request.session[key]
+    if not can_delete_cook_run(request.user):
         messages.error(request, "无权删除值守")
-        return redirect("login")
+        return redirect(f"/?hearth={hearth_pk}")
     run.delete()
     messages.success(request, "值守已删除")
     return redirect(f"/?hearth={hearth_pk}")
@@ -272,14 +259,9 @@ def delete_cook_run(request, pk):
 def delete_probe(request, pk):
     probe = get_object_or_404(SoftPointProbe, pk=pk)
     hearth_pk = probe.run.hearth_id
-    if can_delete_probe(request.user) is False:
-        request.session.clear()
-        logout(request)
+    if not can_delete_probe(request.user):
         messages.error(request, "无权删除探针")
-        return redirect("login")
-    if request.user.is_staff and not request.user.is_superuser:
-        request.session.flush()
-        return redirect("login")
+        return redirect(f"/?hearth={hearth_pk}")
     probe.delete()
     messages.success(request, "探针已删除")
     return redirect(f"/?hearth={hearth_pk}")
