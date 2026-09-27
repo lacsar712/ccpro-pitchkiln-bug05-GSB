@@ -26,10 +26,13 @@
         <span class="mono">{{ lot.arrivalKg }} kg</span>
         <span>{{ lot.receivedAt|date:"Y-m-d H:i" }}</span>
       </div>
+      {% if user.is_staff or user.is_superuser %}
       <form method="post" action="{% url 'delete_resin_lot' lot.pk %}" class="inline-del">
         {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'resin_lot_feed' %}">
         <button type="submit" class="btn-ghost">删除批</button>
       </form>
+      {% endif %}
     </li>
     {% empty %}
     <li class="lot-card empty">暂无来脂批</li>

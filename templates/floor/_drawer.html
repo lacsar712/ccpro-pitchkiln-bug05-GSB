@@ -8,10 +8,13 @@
   </header>
 
   <p class="drawer-meta">品级标签 · {{ hearth.resinGrade }}</p>
+  {% if user.is_staff or user.is_superuser %}
   <form method="post" action="{% url 'delete_hearth' hearth.pk %}">
     {% csrf_token %}
+    <input type="hidden" name="next" value="/?hearth={{ hearth.pk }}">
     <button type="submit" class="btn-ghost">删除灶台</button>
   </form>
+  {% endif %}
 
   {% if open_run %}
   <section class="drawer-block">
@@ -29,10 +32,13 @@
       {% csrf_token %}
       <button type="submit" class="btn-ghost">收灶回冷灶</button>
     </form>
+    {% if user.is_staff or user.is_superuser %}
     <form method="post" action="{% url 'delete_cook_run' open_run.pk %}">
       {% csrf_token %}
+      <input type="hidden" name="next" value="/?hearth={{ hearth.pk }}">
       <button type="submit" class="btn-ghost">删除值守</button>
     </form>
+    {% endif %}
   </section>
 
   <section class="drawer-block">
@@ -43,10 +49,13 @@
         <span class="mono temp">{{ p.softPointC }}℃</span>
         <span class="when">{{ p.sampledAt|date:"m-d H:i" }}</span>
         <span class="who">{{ p.samplerName }}</span>
+        {% if user.is_staff or user.is_superuser %}
         <form method="post" action="{% url 'delete_probe' p.pk %}" class="inline-del">
           {% csrf_token %}
+          <input type="hidden" name="next" value="/?hearth={{ hearth.pk }}">
           <button type="submit" class="btn-ghost">删探针</button>
         </form>
+        {% endif %}
       </li>
       {% empty %}
       <li class="empty">尚无探针 — 出胶前须有 ≤95℃ 记录</li>

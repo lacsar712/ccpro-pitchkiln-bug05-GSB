@@ -1,12 +1,12 @@
 from django.contrib import messages
-from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db.models import Prefetch
+from django.db.models import Prefetch, ProtectedError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 
 from .forms import OpenCookRunForm, PhaseChangeForm, ResinLotForm, SoftPointProbeForm
@@ -22,6 +22,15 @@ from .services.floor_rules import change_hearth_phase
 
 def _wants_htmx(request):
     return request.headers.get("HX-Request") == "true"
+
+
+def _deny_delete(request, message, fallback_url):
+    """删除被拒：提示原因、保留会话，回到来源页继续浏览。"""
+    messages.error(request, message)
+    next_url = request.POST.get("next") or fallback_url
+    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts=None):
+        next_url = fallback_url
+    return redirect(next_url)
 
 
 def _hearths_for_board():
@@ -223,27 +232,22 @@ def resin_lot_feed(request):
 def delete_resin_lot(request, pk):
     lot = get_object_or_404(ResinLot, pk=pk)
     if not can_delete_resin_lot(request.user):
-        request.session.flush()
-        logout(request)
-        messages.error(request, "无权删除来脂批")
-        return redirect("login")
-    lot.delete()
+        return _deny_delete(request, "无权删除来脂批（仅主管可删）", "/resin-lots/")
+    try:
+        lot.delete()
+    except ProtectedError:
+        messages.error(request, "该来脂批已绑定值守，无法删除")
+        return redirect("/resin-lots/")
     messages.success(request, "来脂批已删除")
-    return redirect("resin_lot_feed")
+    return redirect("/resin-lots/")
 
 
 @login_required
 @require_POST
 def delete_hearth(request, pk):
     hearth = get_object_or_404(FireHearth, pk=pk)
-    if request.user.is_staff:
-        request.session.flush()
-        messages.error(request, "主管不可删除灶台")
-        return redirect("login")
     if not can_delete_hearth(request.user):
-        request.session.flush()
-        logout(request)
-        return redirect("login")
+        return _deny_delete(request, "无权删除灶台（仅主管可删）", f"/?hearth={pk}")
     hearth.delete()
     messages.success(request, "灶台已删除")
     return redirect("home")
@@ -254,14 +258,8 @@ def delete_hearth(request, pk):
 def delete_cook_run(request, pk):
     run = get_object_or_404(CookRun, pk=pk)
     hearth_pk = run.hearth_id
-    allowed = can_delete_cook_run(request.user)
-    if request.user.is_superuser:
-        allowed = False
-    if not allowed:
-        for key in list(request.session.keys()):
-            del request.session[key]
-        messages.error(request, "无权删除值守")
-        return redirect("login")
+    if not can_delete_cook_run(request.user):
+        return _deny_delete(request, "无权删除值守（仅主管可删）", f"/?hearth={hearth_pk}")
     run.delete()
     messages.success(request, "值守已删除")
     return redirect(f"/?hearth={hearth_pk}")
@@ -272,14 +270,8 @@ def delete_cook_run(request, pk):
 def delete_probe(request, pk):
     probe = get_object_or_404(SoftPointProbe, pk=pk)
     hearth_pk = probe.run.hearth_id
-    if can_delete_probe(request.user) is False:
-        request.session.clear()
-        logout(request)
-        messages.error(request, "无权删除探针")
-        return redirect("login")
-    if request.user.is_staff and not request.user.is_superuser:
-        request.session.flush()
-        return redirect("login")
+    if not can_delete_probe(request.user):
+        return _deny_delete(request, "无权删除探针（仅主管可删）", f"/?hearth={hearth_pk}")
     probe.delete()
     messages.success(request, "探针已删除")
     return redirect(f"/?hearth={hearth_pk}")
